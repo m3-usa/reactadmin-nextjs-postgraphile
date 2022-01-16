@@ -1,8 +1,15 @@
-import { Admin, Resource, ListGuesser, UserIdentity } from "react-admin";
-import jsonServerProvider from "ra-data-json-server";
+import {
+  Admin,
+  Resource,
+  ListGuesser,
+  DataProvider,
+  EditGuesser,
+} from "react-admin";
+
+import pgDataProvider from "ra-postgraphile";
 
 import "../styles/globals.css";
-import type { AppProps } from "next/app";
+
 import {
   ClerkProvider,
   SignedIn,
@@ -11,33 +18,49 @@ import {
   useClerk,
   useUser,
 } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
 
-function App({ pageProps }: AppProps) {
+import { ApolloProvider } from "@apollo/client";
+import { ApolloClient, InMemoryCache } from "@apollo/client";
+import { HttpLink } from "@apollo/client/link/http";
+
+function App() {
+  const [dataProvider, setDataProvider] = useState<DataProvider>();
+
+  const apolloClient = new ApolloClient({
+    link: new HttpLink({
+      uri: process.env.NEXT_PUBLIC_GRAPHQL_API_URL,
+      credentials: "include",
+    }),
+    cache: new InMemoryCache(),
+  });
+
+  useEffect(() => {
+    (async () => {
+      const dataProvider = await pgDataProvider(apolloClient);
+      setDataProvider(() => dataProvider);
+    })();
+  }, []);
+
+  if (!dataProvider) {
+    return null;
+  }
+
   return (
-    <ClerkProvider>
-      <SignedIn>
-        <AdminWithClerk {...pageProps} />
-      </SignedIn>
-      <SignedOut>
-        <RedirectToSignIn afterSignInUrl="/" />
-      </SignedOut>
-    </ClerkProvider>
+    <ApolloProvider client={apolloClient}>
+      <ClerkProvider>
+        <SignedIn>
+          <AdminWithClerk dataProvider={dataProvider} />
+        </SignedIn>
+        <SignedOut>
+          <RedirectToSignIn afterSignInUrl="/" />
+        </SignedOut>
+      </ClerkProvider>
+    </ApolloProvider>
   );
 }
 
-export type AuthProvider = {
-  login: (params: any) => Promise<any>;
-  logout: (params: any) => Promise<void | false | string>;
-  checkAuth: (params: any) => Promise<void>;
-  checkError: (error: any) => Promise<void>;
-  getPermissions: (params: any) => Promise<any>;
-  getIdentity?: () => Promise<UserIdentity>;
-  [key: string]: any;
-};
-
-const dataProvider = jsonServerProvider("https://jsonplaceholder.typicode.com");
-
-const AdminWithClerk = () => {
+const AdminWithClerk = (props: any) => {
   const user = useUser();
   const { signOut } = useClerk();
   const authProvider = {
@@ -57,9 +80,11 @@ const AdminWithClerk = () => {
     // ...
   };
   return (
-    <Admin dataProvider={dataProvider} authProvider={authProvider}>
-      <Resource name="users" list={ListGuesser} />
-      <Resource name="todos" list={ListGuesser} />
+    <Admin dataProvider={props.dataProvider} authProvider={authProvider}>
+      <Resource name="people" list={ListGuesser} edit={EditGuesser} />
+      <Resource name="campaigns" list={ListGuesser} />
+      <Resource name="lineItems" list={ListGuesser} />
+      <Resource name="zebras" list={ListGuesser} />
     </Admin>
   );
 };
